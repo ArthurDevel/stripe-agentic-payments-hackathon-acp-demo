@@ -2,6 +2,17 @@
 
 Python Flask server that bridges chat/AI agents and the seller backend using the Agentic Commerce Protocol.
 
+
+## Project Structure
+
+```
+chat_backend/
+├── server.py           # Flask server
+├── acp_client.py       # ACP protocol client
+├── llm_service.py      # LLM service for chat processing
+└── requirements.txt    # Dependencies
+```
+
 ## Quick Start
 
 ### Install & Run
@@ -41,14 +52,4 @@ CHAT_BACKEND_PORT=9000                       # Port for chat backend
 DEBUG=True                                   # Enable debug mode
 FACILITATOR_API_KEY="sk_"                    # Not used (only for real Stripe SPT)
 DAT1_API_KEY=                                # DAT1 API key for LLM (REQUIRED)
-```
-
-## Project Structure
-
-```
-chat_backend/
-├── server.py           # Flask server
-├── acp_client.py       # ACP protocol client
-├── config.py           # Configuration
-└── requirements.txt    # Dependencies
 ```

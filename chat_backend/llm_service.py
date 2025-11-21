@@ -1,8 +1,24 @@
+import os
 import requests
 import json
 from typing import List, Dict, Any, Optional
-from config import DAT1_API_KEY
+from dotenv import load_dotenv
+
 from acp_client import ACPClient
+
+load_dotenv()
+
+
+# ============================================================================
+# CONSTANTS
+# ============================================================================
+
+DAT1_API_KEY: Optional[str] = os.getenv('DAT1_API_KEY')
+
+
+# ============================================================================
+# LLM SERVICE CLASS
+# ============================================================================
 
 class LLMService:
     def __init__(self, acp_client: ACPClient):

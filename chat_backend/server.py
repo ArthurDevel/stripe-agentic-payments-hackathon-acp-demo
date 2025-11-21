@@ -5,12 +5,24 @@ Simple Python server that acts as a bridge between chat/AI agents and the seller
 Handles product listing, checkout operations, and chat message processing.
 """
 
+import os
 from typing import Dict, Any, Tuple, Optional
 from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
+from dotenv import load_dotenv
+
 from acp_client import ACPClient
-from config import CHAT_BACKEND_PORT, DEBUG
 from llm_service import LLMService
+
+load_dotenv()
+
+
+# ============================================================================
+# CONSTANTS
+# ============================================================================
+
+CHAT_BACKEND_PORT: int = int(os.getenv('CHAT_BACKEND_PORT', '9000'))
+DEBUG: bool = os.getenv('DEBUG', 'True').lower() == 'true'
 
 
 # ============================================================================
