@@ -531,22 +531,24 @@ async function completeOrder() {
     addBotMessage("💳 Processing payment...");
 
     try {
-        // In a real app, we would get a token from Stripe Elements here.
-        // For this demo, we simulate getting a token.
-        const paymentToken = DEFAULT_PAYMENT_METHOD.payment_method;
-        const checkoutId = state.currentCheckout.id;
-
-        // Send the token to the LLM to complete the checkout
-        const message = `Please complete the checkout. Checkout ID: ${checkoutId}, Payment token: ${paymentToken}`;
-
-        // We use processMessage to send this to the LLM
-        // We pass a dummy typing ID since we don't have one yet
-        const typingId = showTypingIndicator();
-        await processMessage(message, typingId);
-
-        // The LLM will respond with success or failure, and we can handle it in the chat flow.
-        // We clear the cart if the LLM says it's done (or we can rely on the LLM to tell us).
-        // For better UX, let's assume if we get here, we are handing off to the LLM.
+        const paymentData = {
+            payment_token: DEFAULT_PAYMENT_METHOD.payment_method,
+            payment_provider: 'stripe'
+        };
+        
+        const response = await fetch(`${API_BASE_URL}/checkout/${state.currentCheckout.id}/complete`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(paymentData)
+        });
+        
+        const result = await response.json();
+        
+        if (result.status === 'completed' || result.order) {
+            showOrderComplete(result);
+        } else {
+            throw new Error(result.error || 'Payment failed');
+        }
 
     } catch (error) {
         addBotMessage("❌ Error processing payment. Please try again.");
@@ -1293,74 +1295,44 @@ function proceedToReview() {
 async function completeModalCheckout() {
     const modalBody = document.getElementById('modalBody');
     const modalFooter = document.getElementById('modalFooter');
-
+    
     modalBody.innerHTML = `
         <div style="padding: 40px 20px; text-align: center;">
             <div style="font-size: 48px; margin-bottom: 16px;">💳</div>
             <p style="color: #666; font-size: 14px;">Processing payment...</p>
         </div>
-        `;
-
+    `;
     modalFooter.innerHTML = '';
-
+    
     try {
         const paymentData = {
             payment_token: DEFAULT_PAYMENT_METHOD.payment_method,
             payment_provider: 'stripe'
         };
-
-        // Calculate total amount from checkout
-        const total = state.currentCheckout.totals.find(t => t.type === 'total');
-        const amount = total.amount;
-
-        // Calculate expiration (tomorrow)
-        const tomorrow = new Date();
-        tomorrow.setDate(tomorrow.getDate() + 1);
-        const expiresAt = Math.floor(tomorrow.getTime() / 1000);
-
-        // Call Chat Backend to exchange the raw token for an SPT
-        // This keeps the secret keys on the backend
-        const sptResponse = await fetch(`${API_BASE_URL}/exchange_token`, {
+        
+        const response = await fetch(`${API_BASE_URL}/checkout/${state.currentCheckout.id}/complete`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                payment_token: paymentData.payment_token,
-                amount: amount
-            })
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(paymentData)
         });
-
-        if (!sptResponse.ok) {
-            const errorData = await sptResponse.json();
-            throw new Error(errorData.error || 'Failed to generate Shared Payment Token');
+        
+        const result = await response.json();
+        
+        if (result.status === 'completed' || result.order) {
+            showSuccessScreen(result);
+        } else {
+            throw new Error(result.error || 'Payment failed');
         }
-
-        const sptData = await sptResponse.json();
-        const sharedPaymentToken = sptData.spt_token;
-
-        // Close the modal immediately to let the LLM take over the UI interaction
-        closeModal();
-
-        // Add a system message to the chat to indicate what's happening (optional, but good for context)
-        // addBotMessage("Received payment details. Finalizing your order..."); 
-        // Actually, let's just let the typing indicator do the work, or the user might be confused.
-
-        // Send the SPT to the LLM to complete the checkout
-        const message = `Please complete the checkout.Checkout ID: ${state.currentCheckout.id}, Payment token: ${sharedPaymentToken} `;
-
-        // Show the message in the chat UI so the user sees what's happening
-        addUserMessage(message);
-
-        // We use processMessage to send this to the LLM
-        const typingId = showTypingIndicator();
-        await processMessage(message, typingId);
-
-        // The LLM will respond with the result in the chat.
-
     } catch (error) {
-        console.error("Error in completeModalCheckout:", error);
-        addBotMessage("❌ An error occurred while processing your request.");
+        modalBody.innerHTML = `
+            <div style="padding: 40px; text-align: center;">
+                <div style="font-size: 48px; margin-bottom: 16px;">❌</div>
+                <p style="color: #666;">Payment failed. Please try again.</p>
+            </div>
+        `;
+        modalFooter.innerHTML = `
+            <button class="modal-secondary-btn" onclick="closeModal()">Close</button>
+        `;
     }
 }
 
@@ -1368,13 +1340,13 @@ function showSuccessScreen(checkout) {
     const modalBody = document.getElementById('modalBody');
     const modalFooter = document.getElementById('modalFooter');
     const modalTitle = document.getElementById('modalTitle');
-
+    
     modalTitle.textContent = 'Purchase Complete';
-
+    
     const total = checkout.totals.find(t => t.type === 'total');
-
+    
     modalBody.innerHTML = `
-        < div class="success-screen" >
+        <div class="success-screen">
             <div class="success-icon">✓</div>
             <h2 class="success-title">Purchase complete</h2>
             <p class="success-message">Your order has been confirmed. You'll receive a confirmation email at ${DEFAULT_BUYER.email} shortly.</p>
@@ -1393,13 +1365,13 @@ function showSuccessScreen(checkout) {
                     <span style="color: #1a1a1a; font-size: 14px; font-weight: 600;">3-5 business days</span>
                 </div>
             </div>
-        </div >
-        `;
-
+        </div>
+    `;
+    
     modalFooter.innerHTML = `
-        < button class="modal-primary-btn" onclick = "closeModal()" > Done</button >
-            `;
-
+        <button class="modal-primary-btn" onclick="closeModal()">Done</button>
+    `;
+    
     // Reset state
     state.currentCheckout = null;
     state.currentProduct = null;
@@ -1417,11 +1389,11 @@ function showModalQuantityAdjust() {
     const currentQty = currentItem.item.quantity;
 
     const imageContent = state.currentProduct.image
-        ? `< img src = "${escapeHtml(state.currentProduct.image)}" alt = "${escapeHtml(state.currentProduct.name)}" style = "width: 80px; height: 80px; border-radius: 12px; object-fit: cover; margin: 0 auto 20px; display: block;" > `
-        : `< div style = "width: 80px; height: 80px; background: linear-gradient(135deg, #f5f5f5 0%, #e0e0e0 100%); border-radius: 12px; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; font-size: 40px;" >🏺</div > `;
+        ? `<img src="${escapeHtml(state.currentProduct.image)}" alt="${escapeHtml(state.currentProduct.name)}" style="width: 80px; height: 80px; border-radius: 12px; object-fit: cover; margin: 0 auto 20px; display: block;">`
+        : `<div style="width: 80px; height: 80px; background: linear-gradient(135deg, #f5f5f5 0%, #e0e0e0 100%); border-radius: 12px; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; font-size: 40px;">🏺</div>`;
 
     modalBody.innerHTML = `
-        < div style = "padding: 40px 20px; text-align: center;" >
+        <div style="padding: 40px 20px; text-align: center;">
             ${imageContent}
             
             <h3 style="font-size: 18px; font-weight: 600; color: #1a1a1a; margin-bottom: 8px;">
@@ -1457,7 +1429,7 @@ function showModalQuantityAdjust() {
                     </span>
                 </div>
             </div>
-        </div >
+        </div>
         `;
 
     modalFooter.innerHTML = `

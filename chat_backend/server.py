@@ -262,41 +262,6 @@ def chat() -> Tuple[Response, int]:
 
 
 # ============================================================================
-# PAYMENT TOKEN ENDPOINTS
-# ============================================================================
-
-@app.route('/exchange_token', methods=['POST'])
-def exchange_token() -> Tuple[Response, int]:
-    """
-    Exchange a raw payment token for a Shared Payment Token (SPT).
-    
-    Request body must contain:
-        - payment_token: Raw payment token from payment provider (required)
-        - amount: Payment amount in cents as integer (required)
-        
-    Returns:
-        JSON response containing the SPT token, or error response.
-    """
-    request_data = _validate_request_json()
-    
-    if 'payment_token' not in request_data:
-        return jsonify({'error': 'payment_token is required'}), 400
-    
-    if 'amount' not in request_data:
-        return jsonify({'error': 'amount is required'}), 400
-    
-    payment_token = request_data['payment_token']
-    amount_value = request_data['amount']
-    
-    if not isinstance(amount_value, int):
-        return jsonify({'error': 'amount must be an integer'}), 400
-    
-    spt_token = acp_client.create_spt(payment_token, amount_value)
-    
-    return jsonify({'spt_token': spt_token}), 200
-
-
-# ============================================================================
 # APPLICATION ENTRY POINT
 # ============================================================================
 
@@ -312,7 +277,6 @@ if __name__ == '__main__':
     print(f"  POST   /checkout/<id>/complete        - Complete checkout")
     print(f"  POST   /checkout/<id>/cancel          - Cancel checkout")
     print(f"  POST   /chat                          - Process chat message")
-    print(f"  POST   /exchange_token                - Exchange payment token")
     print(f"\n")
     
     app.run(host='0.0.0.0', port=CHAT_BACKEND_PORT, debug=DEBUG)

@@ -38,9 +38,8 @@ Server starts on `http://localhost:9000`
 - `POST /checkout/<checkout_id>/complete` - Complete checkout with SPT
 - `POST /checkout/<checkout_id>/cancel` - Cancel checkout
 
-### Chat & Payment
+### Chat
 - `POST /chat` - Process chat messages with LLM
-- `POST /exchange_token` - Exchange payment token for SPT
 
 ## Configuration
 

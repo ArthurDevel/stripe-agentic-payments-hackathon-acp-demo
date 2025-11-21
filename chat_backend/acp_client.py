@@ -270,37 +270,28 @@ class ACPClient:
             'provider': payment_provider
         }
         
-        # Step 3: Build request data
-        data: Dict[str, Any] = {'payment_data': payment_data}
+        # Step 3: Exchange payment token for SPT token
+        tomorrow = datetime.now() + timedelta(days=1)
+        expires_at_timestamp = int(tomorrow.timestamp()) 
         
-        if billing_address:
-            data['billing_address'] = billing_address
+        # ============================================================
+        # DEMO MODE: Mock Stripe SPT Server (for European demo)
+        # ============================================================
+        mock_spt_url = os.getenv('MOCK_STRIPE_SPT_URL', 'http://localhost:8001')
+        print(f"🎭 DEMO MODE: Using mock Stripe SPT server: {mock_spt_url}/v1/shared_payment/issued_tokens")
         
-        # ----------------------------------------------------------------
-        # LEGACY: Backend-side SPT Exchange (Disabled)
-        # ----------------------------------------------------------------
-        # tomorrow = datetime.datetime.now() + datetime.timedelta(days=1)
-        # expires_at_timestamp = int(tomorrow.timestamp()) 
-        # 
-        # # ============================================================
-        # # DEMO MODE: Mock Stripe SPT Server (for European demo)
-        # # ============================================================
-        # from config import SELLER_BACKEND_URL
-        # mock_spt_url = os.getenv('MOCK_STRIPE_SPT_URL', 'http://localhost:8001')
-        # print(f"🎭 DEMO MODE: Using mock Stripe SPT server: {mock_spt_url}/v1/shared_payment/issued_tokens")
-        # 
-        # get_pst_token_response = requests.post(
-        #     url=f"{mock_spt_url}/v1/shared_payment/issued_tokens", 
-        #     data={
-        #         "payment_method": payment_token,
-        #         "usage_limits[currency]": "usd",
-        #         "usage_limits[max_amount]": amount,
-        #         "usage_limits[expires_at]": expires_at_timestamp,
-        #         "seller_details[network_id]": "internal",
-        #         "seller_details[external_id]": "stripe_test_merchant",
-        #     }
-        # )
-        # 
+        get_pst_token_response = requests.post(
+            url=f"{mock_spt_url}/v1/shared_payment/issued_tokens", 
+            data={
+                "payment_method": payment_token,
+                "usage_limits[currency]": "usd",
+                "usage_limits[max_amount]": total_amount,
+                "usage_limits[expires_at]": expires_at_timestamp,
+                "seller_details[network_id]": "internal",
+                "seller_details[external_id]": "stripe_test_merchant",
+            }
+        )
+        
         # # ============================================================
         # # PRODUCTION MODE: Real Stripe API (commented out)
         # # ============================================================
@@ -314,22 +305,26 @@ class ACPClient:
         # #     data={
         # #         "payment_method": payment_token,
         # #         "usage_limits[currency]": "usd",
-        # #         "usage_limits[max_amount]": amount,
+        # #         "usage_limits[max_amount]": total_amount,
         # #         "usage_limits[expires_at]": expires_at_timestamp,
         # #         "seller_details[network_id]": "internal",
         # #         "seller_details[external_id]": "stripe_test_merchant",
         # #     },
         # #     auth=(os.getenv("FACILITATOR_API_KEY"), "")
         # # )
-        # 
-        # print(get_pst_token_response.json())
-        # spt_token_id = get_pst_token_response.json()['id']
-        # 
-        # 
-        # payment_data['token'] = spt_token_id
-        # ----------------------------------------------------------------
         
-        # Step 4: Send completion request
+        print(get_pst_token_response.json())
+        spt_token_id = get_pst_token_response.json()['id']
+        
+        payment_data['token'] = spt_token_id
+        
+        # Step 4: Build request data
+        data: Dict[str, Any] = {'payment_data': payment_data}
+        
+        if billing_address:
+            data['billing_address'] = billing_address
+        
+        # Step 5: Send completion request
         return self._make_request('POST', f'/checkout_sessions/{checkout_id}/complete', data)
     
     def cancel_checkout(self, checkout_id: str) -> Dict[str, Any]:
@@ -343,75 +338,4 @@ class ACPClient:
             Dictionary containing cancellation result
         """
         return self._make_request('POST', f'/checkout_sessions/{checkout_id}/cancel', {})
-    
-    def create_spt(self, payment_token: str, amount: int) -> str:
-        """
-        Exchange a raw payment token for a Shared Payment Token (SPT).
-        
-        This must be done on the backend to keep the Stripe Secret Key secure.
-        The SPT can be used for payment without exposing the original payment token.
-        
-        Args:
-            payment_token: Raw payment token from payment provider
-            amount: Maximum amount the SPT can be used for (in cents)
-            
-        Returns:
-            SPT token ID as string
-            
-        Raises:
-            Exception: If SPT creation fails or response is invalid
-        """
-        # Step 1: Calculate expiration timestamp
-        expires_at_timestamp = _calculate_expiration_timestamp(SPT_EXPIRATION_DAYS)
-        
-        # Step 2: Determine SPT server URL (demo or production)
-        mock_spt_url = os.getenv('MOCK_STRIPE_SPT_URL', 'http://localhost:8001')
-        
-        # ============================================================
-        # DEMO MODE: Mock Stripe SPT Server (for European demo)
-        # ============================================================
-        print(f"DEMO MODE: Using mock Stripe SPT server: {mock_spt_url}/v1/shared_payment/issued_tokens")
-        
-        get_pst_token_response = requests.post(
-            url=f"{mock_spt_url}/v1/shared_payment/issued_tokens", 
-            data={
-                "payment_method": payment_token,
-                "usage_limits[currency]": "usd",
-                "usage_limits[max_amount]": amount,
-                "usage_limits[expires_at]": expires_at_timestamp,
-                "seller_details[network_id]": "internal",
-                "seller_details[external_id]": "stripe_test_merchant",
-            }
-        )
-        
-        # ============================================================
-        # PRODUCTION MODE: Real Stripe API (commented out)
-        # ============================================================
-        # Uncomment below and comment out DEMO MODE block above for production
-        #
-        # stripe_api_url = "https://api.stripe.com/v1/shared_payment/issued_tokens"
-        # print(f"PRODUCTION MODE: Using real Stripe API: {stripe_api_url}")
-        # 
-        # get_pst_token_response = requests.post(
-        #     url=stripe_api_url, 
-        #     data={
-        #         "payment_method": payment_token,
-        #         "usage_limits[currency]": "usd",
-        #         "usage_limits[max_amount]": amount,
-        #         "usage_limits[expires_at]": expires_at_timestamp,
-        #         "seller_details[network_id]": "internal",
-        #         "seller_details[external_id]": "stripe_test_merchant",
-        #     },
-        #     auth=(os.getenv("FACILITATOR_API_KEY"), "")
-        # )
-        
-        # Step 3: Parse response and validate
-        get_pst_token_response.raise_for_status()
-        response_json = get_pst_token_response.json()
-        print(f"SPT Response: {response_json}")
-        
-        if 'id' not in response_json:
-            raise Exception(f"Failed to create SPT: {response_json}")
-        
-        # Step 4: Return SPT token ID
-        return response_json['id']
+  

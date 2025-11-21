@@ -5,6 +5,11 @@ Complete implementation of the Agentic Commerce Protocol with seller backend and
 
 Thanks to @sandrozc-stripe for providing the code of this repo!
 
+
+## How ACP works
+
+
+
 ## Architecture
 
 ```
@@ -121,7 +126,6 @@ Bridge between chat frontend and seller backend:
 - `POST /checkout/<checkout_id>/complete` - Complete checkout with SPT
 - `POST /checkout/<checkout_id>/cancel` - Cancel checkout
 - `POST /chat` - Process chat messages with LLM
-- `POST /exchange_token` - Exchange payment token for SPT
 
 ### Mock Stripe SPT Server (Port 8001)
 Simulates Stripe's Shared Payment Token API:
