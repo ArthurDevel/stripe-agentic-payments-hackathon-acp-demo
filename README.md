@@ -3,6 +3,8 @@ Complete implementation of the Agentic Commerce Protocol with seller backend and
 
 > Note: because an important part of the ACP protocol (the Shared Payment Token) isn't yet publicly available, we added a `mock_stripe_spt` server to this example.
 
+Thanks to @sandrozc-stripe for providing the code of this repo!
+
 ## Architecture
 
 ```
