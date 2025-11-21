@@ -7,10 +7,12 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from acp_client import ACPClient
 from config import CHAT_BACKEND_PORT, DEBUG
+from llm_service import LLMService
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
+CORS(app, resources={r"/*": {"origins": "*"}})  # Enable CORS for all routes
 acp = ACPClient()
+llm_service = LLMService(acp)
 
 @app.route('/products', methods=['GET'])
 def list_products():
@@ -107,6 +109,38 @@ def cancel_checkout(checkout_id):
         return jsonify(result), result.get('status_code', 400)
     
     return jsonify(result)
+
+
+@app.route('/chat', methods=['POST'])
+def chat():
+    data = request.json
+    
+    if not data or 'messages' not in data:
+        return jsonify({'error': 'Messages are required'}), 400
+        
+    messages = data['messages']
+    
+    response = llm_service.process_message(messages)
+    return jsonify(response)
+
+@app.route('/exchange_token', methods=['POST'])
+def exchange_token():
+    """
+    Exchange a raw payment token for a Shared Payment Token (SPT)
+    """
+    data = request.json
+    payment_token = data.get('payment_token')
+    amount = data.get('amount')
+    
+    if not payment_token or not amount:
+        return jsonify({'error': 'payment_token and amount are required'}), 400
+        
+    try:
+        spt_token = acp.create_spt(payment_token, int(amount))
+        return jsonify({'spt_token': spt_token})
+    except Exception as e:
+        print(f"Error exchanging token: {e}")
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     print(f"\n🤖 Chat Backend Server Starting...")

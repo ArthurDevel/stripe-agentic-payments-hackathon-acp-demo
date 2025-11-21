@@ -108,6 +108,7 @@ function checkoutModifiable(req: Request, res: Response, next: NextFunction) {
 app.post('/checkout_sessions', (req: Request, res: Response) => {
   try {
     const { items, buyer, fulfillment_address } = req.body;
+    console.log('📝 Creating checkout with items:', JSON.stringify(items, null, 2));
 
     // Create checkout
     const checkoutId = generateId('checkout');
@@ -151,6 +152,7 @@ app.post('/checkout_sessions', (req: Request, res: Response) => {
     };
 
     checkouts[checkoutId] = checkout;
+    console.log('✅ Checkout created:', checkoutId);
 
     res.status(201).json(checkout);
   } catch (error) {
@@ -189,6 +191,9 @@ app.post(
       const { checkout_session_id } = req.params;
       const { items, buyer, fulfillment_address, fulfillment_option_id } =
         req.body;
+
+      console.log(`📝 Updating checkout ${checkout_session_id} with:`, JSON.stringify(req.body, null, 2));
+
       const checkout = (req as any).checkout as CheckoutSession;
 
       // Update items if provided

@@ -13,4 +13,5 @@ SELLER_BACKEND_URL = os.getenv('SELLER_BACKEND_URL', 'http://localhost:3000')
 # Chat Backend Configuration
 CHAT_BACKEND_PORT = int(os.getenv('CHAT_BACKEND_PORT', 9000))
 DEBUG = os.getenv('DEBUG', 'True').lower() == 'true'
+DAT1_API_KEY = os.getenv('DAT1_API_KEY')
 

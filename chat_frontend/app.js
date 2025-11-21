@@ -72,39 +72,86 @@ function handleSendMessage() {
     }, 500);
 }
 
-function processMessage(message, typingId) {
-    const lowerMessage = message.toLowerCase();
+async function processMessage(message, typingId) {
+    // Add user message to local history
+    const userMessage = { role: 'user', content: message };
 
-    // Command routing
-    if (lowerMessage.includes('show products') || lowerMessage.includes('browse') || lowerMessage.includes('catalog')) {
+    // We need to maintain a conversation history. 
+    // For simplicity in this demo, we'll just send the current session's messages.
+    // In a real app, you'd manage this state better.
+    if (!state.messages) {
+        state.messages = [];
+    }
+    state.messages.push(userMessage);
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/chat`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ messages: state.messages })
+        });
+
+        const responseMessage = await response.json();
+
+        // Add assistant message to history
+        state.messages.push(responseMessage);
+
         removeTypingIndicator(typingId);
-        handleShowProducts();
-    } else if (lowerMessage.includes('buy') || lowerMessage.includes('purchase')) {
+
+        // Check for tool calls in the response
+        if (responseMessage.original_tool_calls) {
+            handleToolCalls(responseMessage.original_tool_calls);
+        }
+
+        // Display the assistant's text response
+        if (responseMessage.content) {
+            addBotMessage(responseMessage.content);
+        }
+
+    } catch (error) {
+        console.error('Chat error:', error);
         removeTypingIndicator(typingId);
-        handleBuyProduct(message);
-    } else if (lowerMessage.includes('cart')) {
-        removeTypingIndicator(typingId);
-        handleShowCart();
-    } else if (lowerMessage.includes('help')) {
-        removeTypingIndicator(typingId);
-        handleHelp();
-    } else if (lowerMessage.includes('cancel') && state.currentCheckout) {
-        removeTypingIndicator(typingId);
-        handleCancelCheckout();
-    } else {
-        removeTypingIndicator(typingId);
-        handleGeneralQuery(message);
+        addBotMessage("❌ Sorry, I'm having trouble connecting to the server.");
     }
 }
 
+function handleToolCalls(toolCalls) {
+    toolCalls.forEach(toolCall => {
+        const functionName = toolCall.function.name;
+        const args = JSON.parse(toolCall.function.arguments);
+
+        if (functionName === 'list_products') {
+            // The backend already executed this and the LLM should have described the products.
+            // But we can also trigger the UI display if we want rich cards.
+            // For now, let's rely on the LLM's text description or trigger the UI if needed.
+            // Actually, the existing UI has a nice card display. Let's trigger it if the LLM suggests it.
+            // But the backend tool returned the JSON list to the LLM.
+            // Let's just show the products using the existing function for better UI.
+            handleShowProducts(true); // Pass true to skip fetching if we already have data? 
+            // Actually, handleShowProducts fetches again. That's fine.
+        } else if (functionName === 'add_to_cart') {
+            const itemId = args.item_id;
+            const product = state.products.find(p => p.id === itemId);
+            if (product) {
+                // User requested to open the product modal instead of direct add to cart
+                openProductModal(product);
+            }
+        } else if (functionName === 'start_checkout') {
+            startCheckout();
+        }
+    });
+}
+
 // Command handlers
-async function handleShowProducts() {
+async function handleShowProducts(silent = false) {
     try {
         const response = await fetch(`${API_BASE_URL}/products`);
         const data = await response.json();
         state.products = data.products;
 
-        addBotMessage("Here are our available products:");
+        if (!silent) {
+            addBotMessage("Here are our available products:");
+        }
 
         // Create a container for all products to display in one line
         let productsHtml = '<div class="products-container">';
@@ -115,9 +162,11 @@ async function handleShowProducts() {
 
         addRawMessage(productsHtml, 'bot');
 
-        setTimeout(() => {
-            addBotMessage("Click on any product to view details and purchase!");
-        }, 500);
+        if (!silent) {
+            setTimeout(() => {
+                addBotMessage("Click on any product to view details and purchase!");
+            }, 500);
+        }
     } catch (error) {
         addBotMessage("❌ Sorry, I couldn't load the products. Please make sure the backend is running.");
     }
@@ -142,20 +191,26 @@ function handleBuyProduct(message) {
     addToCart(product);
 }
 
-function addToCart(product) {
+function addToCart(product, silent = false) {
     const existingItem = state.cart.find(item => item.id === product.id);
 
     if (existingItem) {
         existingItem.quantity += 1;
-        addBotMessage(`Added another ${product.name} to your cart! (Quantity: ${existingItem.quantity})`);
+        if (!silent) {
+            addBotMessage(`Added another ${product.name} to your cart! (Quantity: ${existingItem.quantity})`);
+        }
     } else {
         state.cart.push({ ...product, quantity: 1 });
-        addBotMessage(`✅ Added ${product.name} to your cart!`);
+        if (!silent) {
+            addBotMessage(`✅ Added ${product.name} to your cart!`);
+        }
     }
 
-    setTimeout(() => {
-        showCheckoutOption();
-    }, 500);
+    if (!silent) {
+        setTimeout(() => {
+            showCheckoutOption();
+        }, 500);
+    }
 }
 
 function showCheckoutOption() {
@@ -476,24 +531,23 @@ async function completeOrder() {
     addBotMessage("💳 Processing payment...");
 
     try {
-        const paymentData = {
-            payment_token: DEFAULT_PAYMENT_METHOD.payment_method,
-            payment_provider: 'stripe'
-        };
+        // In a real app, we would get a token from Stripe Elements here.
+        // For this demo, we simulate getting a token.
+        const paymentToken = DEFAULT_PAYMENT_METHOD.payment_method;
+        const checkoutId = state.currentCheckout.id;
 
-        const response = await fetch(`${API_BASE_URL}/checkout/${state.currentCheckout.id}/complete`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(paymentData)
-        });
+        // Send the token to the LLM to complete the checkout
+        const message = `Please complete the checkout. Checkout ID: ${checkoutId}, Payment token: ${paymentToken}`;
 
-        const result = await response.json();
+        // We use processMessage to send this to the LLM
+        // We pass a dummy typing ID since we don't have one yet
+        const typingId = showTypingIndicator();
+        await processMessage(message, typingId);
 
-        if (result.status === 'completed') {
-            showOrderComplete(result);
-        } else {
-            addBotMessage("❌ Payment failed. Please try again.");
-        }
+        // The LLM will respond with success or failure, and we can handle it in the chat flow.
+        // We clear the cart if the LLM says it's done (or we can rely on the LLM to tell us).
+        // For better UX, let's assume if we get here, we are handing off to the LLM.
+
     } catch (error) {
         addBotMessage("❌ Error processing payment. Please try again.");
     }
@@ -1245,7 +1299,8 @@ async function completeModalCheckout() {
             <div style="font-size: 48px; margin-bottom: 16px;">💳</div>
             <p style="color: #666; font-size: 14px;">Processing payment...</p>
         </div>
-    `;
+        `;
+
     modalFooter.innerHTML = '';
 
     try {
@@ -1254,29 +1309,58 @@ async function completeModalCheckout() {
             payment_provider: 'stripe'
         };
 
-        const response = await fetch(`${API_BASE_URL}/checkout/${state.currentCheckout.id}/complete`, {
+        // Calculate total amount from checkout
+        const total = state.currentCheckout.totals.find(t => t.type === 'total');
+        const amount = total.amount;
+
+        // Calculate expiration (tomorrow)
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const expiresAt = Math.floor(tomorrow.getTime() / 1000);
+
+        // Call Chat Backend to exchange the raw token for an SPT
+        // This keeps the secret keys on the backend
+        const sptResponse = await fetch(`${API_BASE_URL}/exchange_token`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(paymentData)
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                payment_token: paymentData.payment_token,
+                amount: amount
+            })
         });
 
-        const result = await response.json();
-
-        if (result.status === 'completed') {
-            showSuccessScreen(result);
-        } else {
-            throw new Error('Payment failed');
+        if (!sptResponse.ok) {
+            const errorData = await sptResponse.json();
+            throw new Error(errorData.error || 'Failed to generate Shared Payment Token');
         }
+
+        const sptData = await sptResponse.json();
+        const sharedPaymentToken = sptData.spt_token;
+
+        // Close the modal immediately to let the LLM take over the UI interaction
+        closeModal();
+
+        // Add a system message to the chat to indicate what's happening (optional, but good for context)
+        // addBotMessage("Received payment details. Finalizing your order..."); 
+        // Actually, let's just let the typing indicator do the work, or the user might be confused.
+
+        // Send the SPT to the LLM to complete the checkout
+        const message = `Please complete the checkout.Checkout ID: ${state.currentCheckout.id}, Payment token: ${sharedPaymentToken} `;
+
+        // Show the message in the chat UI so the user sees what's happening
+        addUserMessage(message);
+
+        // We use processMessage to send this to the LLM
+        const typingId = showTypingIndicator();
+        await processMessage(message, typingId);
+
+        // The LLM will respond with the result in the chat.
+
     } catch (error) {
-        modalBody.innerHTML = `
-            <div style="padding: 40px; text-align: center;">
-                <div style="font-size: 48px; margin-bottom: 16px;">❌</div>
-                <p style="color: #666;">Payment failed. Please try again.</p>
-            </div>
-        `;
-        modalFooter.innerHTML = `
-            <button class="modal-secondary-btn" onclick="closeModal()">Close</button>
-        `;
+        console.error("Error in completeModalCheckout:", error);
+        addBotMessage("❌ An error occurred while processing your request.");
     }
 }
 
@@ -1290,7 +1374,7 @@ function showSuccessScreen(checkout) {
     const total = checkout.totals.find(t => t.type === 'total');
 
     modalBody.innerHTML = `
-        <div class="success-screen">
+        < div class="success-screen" >
             <div class="success-icon">✓</div>
             <h2 class="success-title">Purchase complete</h2>
             <p class="success-message">Your order has been confirmed. You'll receive a confirmation email at ${DEFAULT_BUYER.email} shortly.</p>
@@ -1309,12 +1393,12 @@ function showSuccessScreen(checkout) {
                     <span style="color: #1a1a1a; font-size: 14px; font-weight: 600;">3-5 business days</span>
                 </div>
             </div>
-        </div>
-    `;
+        </div >
+        `;
 
     modalFooter.innerHTML = `
-        <button class="modal-primary-btn" onclick="closeModal()">Done</button>
-    `;
+        < button class="modal-primary-btn" onclick = "closeModal()" > Done</button >
+            `;
 
     // Reset state
     state.currentCheckout = null;
@@ -1333,11 +1417,11 @@ function showModalQuantityAdjust() {
     const currentQty = currentItem.item.quantity;
 
     const imageContent = state.currentProduct.image
-        ? `<img src="${escapeHtml(state.currentProduct.image)}" alt="${escapeHtml(state.currentProduct.name)}" style="width: 80px; height: 80px; border-radius: 12px; object-fit: cover; margin: 0 auto 20px; display: block;">`
-        : `<div style="width: 80px; height: 80px; background: linear-gradient(135deg, #f5f5f5 0%, #e0e0e0 100%); border-radius: 12px; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; font-size: 40px;">🏺</div>`;
+        ? `< img src = "${escapeHtml(state.currentProduct.image)}" alt = "${escapeHtml(state.currentProduct.name)}" style = "width: 80px; height: 80px; border-radius: 12px; object-fit: cover; margin: 0 auto 20px; display: block;" > `
+        : `< div style = "width: 80px; height: 80px; background: linear-gradient(135deg, #f5f5f5 0%, #e0e0e0 100%); border-radius: 12px; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; font-size: 40px;" >🏺</div > `;
 
     modalBody.innerHTML = `
-        <div style="padding: 40px 20px; text-align: center;">
+        < div style = "padding: 40px 20px; text-align: center;" >
             ${imageContent}
             
             <h3 style="font-size: 18px; font-weight: 600; color: #1a1a1a; margin-bottom: 8px;">
@@ -1373,12 +1457,12 @@ function showModalQuantityAdjust() {
                     </span>
                 </div>
             </div>
-        </div>
-    `;
+        </div >
+        `;
 
     modalFooter.innerHTML = `
-        <button class="modal-primary-btn" onclick="proceedToReview()">Continue to Review</button>
-        <button class="modal-secondary-btn" onclick="proceedToReview()">Back</button>
+        < button class="modal-primary-btn" onclick = "proceedToReview()" > Continue to Review</button >
+            <button class="modal-secondary-btn" onclick="proceedToReview()">Back</button>
     `;
 }
 
@@ -1395,7 +1479,7 @@ async function updateModalCheckoutQuantity(newQty) {
             quantity: newQty
         }];
 
-        const response = await fetch(`${API_BASE_URL}/checkout/${checkout.id}/update`, {
+        const response = await fetch(`${API_BASE_URL} /checkout/${checkout.id}/update`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ items: updatedItems })
