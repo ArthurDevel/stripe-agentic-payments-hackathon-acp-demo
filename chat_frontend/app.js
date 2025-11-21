@@ -648,7 +648,18 @@ function addBotMessage(text, actions = [], skipContent = false) {
 
     let html = '';
     if (!skipContent) {
-        html += `<div class="message-content">${escapeHtml(text).replace(/\n/g, '<br>')}</div>`;
+        // Parse markdown if marked library is available, otherwise fallback to plain text
+        let content;
+        if (typeof marked !== 'undefined') {
+            content = marked.parse(text);
+            // Wrap tables in a scrollable container to prevent overflow
+            content = content.replace(/<table>/g, '<div class="table-wrapper"><table>');
+            content = content.replace(/<\/table>/g, '</table></div>');
+        } else {
+            // Fallback: escape HTML and convert newlines to <br>
+            content = escapeHtml(text).replace(/\n/g, '<br>');
+        }
+        html += `<div class="message-content">${content}</div>`;
     }
 
     if (actions.length > 0) {
