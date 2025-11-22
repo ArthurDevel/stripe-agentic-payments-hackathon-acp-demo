@@ -120,7 +120,24 @@ app.use(express.json());
 // Simple request logging middleware
 app.use((req: Request, res: Response, next: NextFunction) => {
   const timestamp = new Date().toISOString();
-  console.log(`[${timestamp}] ${req.method} ${req.path}`);
+  const logParts = [`[${timestamp}] ${req.method} ${req.path}`];
+  
+  // Log query parameters if present
+  if (Object.keys(req.query).length > 0) {
+    logParts.push(`Query: ${JSON.stringify(req.query)}`);
+  }
+  
+  // Log path parameters if present
+  if (Object.keys(req.params).length > 0) {
+    logParts.push(`Params: ${JSON.stringify(req.params)}`);
+  }
+  
+  // Log request body if present (only for POST/PUT/PATCH)
+  if (['POST', 'PUT', 'PATCH'].includes(req.method) && req.body && Object.keys(req.body).length > 0) {
+    logParts.push(`Body: ${JSON.stringify(req.body)}`);
+  }
+  
+  console.log(logParts.join(' | '));
   next();
 });
 
