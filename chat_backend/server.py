@@ -216,6 +216,42 @@ def complete_checkout(checkout_id: str) -> Tuple[Response, int]:
     return jsonify(result), 200
 
 
+@app.route('/checkout/<checkout_id>/get_shared_token', methods=['POST'])
+def get_shared_payment_token(checkout_id: str) -> Tuple[Response, int]:
+    """
+    Exchange a payment token for a shared payment token (SPT) without completing checkout.
+    
+    Args:
+        checkout_id: The unique identifier of the checkout session.
+        
+    Request body must contain:
+        - payment_token: Payment token from payment provider (required)
+        - payment_provider: Name of payment provider (optional, defaults to 'stripe')
+        
+    Returns:
+        JSON response containing the shared payment token details.
+    """
+    request_data = _validate_request_json()
+    
+    if 'payment_token' not in request_data:
+        return jsonify({'error': 'Payment token is required'}), 400
+    
+    payment_provider = request_data.get('payment_provider')
+    if payment_provider is None:
+        payment_provider = 'stripe'
+    
+    result = acp_client.get_shared_payment_token(
+        checkout_id=checkout_id,
+        payment_token=request_data['payment_token'],
+        payment_provider=payment_provider
+    )
+    
+    if 'error' in result:
+        return _handle_acp_error(result, default_status_code=400)
+    
+    return jsonify(result), 200
+
+
 @app.route('/checkout/<checkout_id>/cancel', methods=['POST'])
 def cancel_checkout(checkout_id: str) -> Tuple[Response, int]:
     """
@@ -274,6 +310,7 @@ if __name__ == '__main__':
     print(f"  POST   /checkout/create               - Create checkout")
     print(f"  GET    /checkout/<id>                 - Get checkout")
     print(f"  PUT    /checkout/<id>/update          - Update checkout")
+    print(f"  POST   /checkout/<id>/get_shared_token - Get shared payment token")
     print(f"  POST   /checkout/<id>/complete        - Complete checkout")
     print(f"  POST   /checkout/<id>/cancel          - Cancel checkout")
     print(f"  POST   /chat                          - Process chat message")

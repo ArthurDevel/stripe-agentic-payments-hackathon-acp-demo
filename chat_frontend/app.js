@@ -528,7 +528,7 @@ async function completeOrder() {
         return;
     }
 
-    addBotMessage("💳 Processing payment...");
+    addBotMessage("💳 Generating payment token...");
 
     try {
         const paymentData = {
@@ -536,7 +536,7 @@ async function completeOrder() {
             payment_provider: 'stripe'
         };
         
-        const response = await fetch(`${API_BASE_URL}/checkout/${state.currentCheckout.id}/complete`, {
+        const response = await fetch(`${API_BASE_URL}/checkout/${state.currentCheckout.id}/get_shared_token`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(paymentData)
@@ -544,14 +544,33 @@ async function completeOrder() {
         
         const result = await response.json();
         
-        if (result.status === 'completed' || result.order) {
-            showOrderComplete(result);
+        if (result.shared_payment_token) {
+            console.log('🎫 Received SPT from backend (regular checkout):', result.shared_payment_token);
+            console.log('📦 Full result (regular checkout):', result);
+            
+            // Send the shared payment token as a user message to the LLM
+            const tokenMessage = `Here is my shared payment token: ${result.shared_payment_token}\nCheckout ID: ${result.checkout_id}\nTotal Amount: $${(result.total_amount / 100).toFixed(2)}\n\nPlease complete my purchase.`;
+            
+            console.log('💬 Sending message to LLM (regular checkout):', tokenMessage);
+            
+            addUserMessage(tokenMessage);
+            
+            // Show typing indicator
+            const typingId = showTypingIndicator();
+            
+            // Process through LLM
+            setTimeout(() => {
+                processMessage(tokenMessage, typingId);
+            }, 500);
+            
+            // Reset checkout state
+            state.currentCheckout = null;
         } else {
-            throw new Error(result.error || 'Payment failed');
+            throw new Error(result.error || 'Failed to generate shared payment token');
         }
 
     } catch (error) {
-        addBotMessage("❌ Error processing payment. Please try again.");
+        addBotMessage("❌ Error generating payment token. Please try again.");
     }
 }
 
@@ -1310,7 +1329,7 @@ async function completeModalCheckout() {
     modalBody.innerHTML = `
         <div style="padding: 40px 20px; text-align: center;">
             <div style="font-size: 48px; margin-bottom: 16px;">💳</div>
-            <p style="color: #666; font-size: 14px;">Processing payment...</p>
+            <p style="color: #666; font-size: 14px;">Generating payment token...</p>
         </div>
     `;
     modalFooter.innerHTML = '';
@@ -1321,7 +1340,7 @@ async function completeModalCheckout() {
             payment_provider: 'stripe'
         };
         
-        const response = await fetch(`${API_BASE_URL}/checkout/${state.currentCheckout.id}/complete`, {
+        const response = await fetch(`${API_BASE_URL}/checkout/${state.currentCheckout.id}/get_shared_token`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(paymentData)
@@ -1329,16 +1348,39 @@ async function completeModalCheckout() {
         
         const result = await response.json();
         
-        if (result.status === 'completed' || result.order) {
-            showSuccessScreen(result);
+        if (result.shared_payment_token) {
+            console.log('🎫 Received SPT from backend:', result.shared_payment_token);
+            console.log('📦 Full result:', result);
+            
+            // Close the modal
+            closeModal();
+            
+            // Send the shared payment token as a user message to the LLM
+            const tokenMessage = `Here is my shared payment token: ${result.shared_payment_token}\nCheckout ID: ${result.checkout_id}\nTotal Amount: $${(result.total_amount / 100).toFixed(2)}\n\nPlease complete my purchase.`;
+            
+            console.log('💬 Sending message to LLM:', tokenMessage);
+            
+            addUserMessage(tokenMessage);
+            
+            // Show typing indicator
+            const typingId = showTypingIndicator();
+            
+            // Process through LLM
+            setTimeout(() => {
+                processMessage(tokenMessage, typingId);
+            }, 500);
+            
+            // Reset checkout state
+            state.currentCheckout = null;
+            state.currentProduct = null;
         } else {
-            throw new Error(result.error || 'Payment failed');
+            throw new Error(result.error || 'Failed to generate shared payment token');
         }
     } catch (error) {
         modalBody.innerHTML = `
             <div style="padding: 40px; text-align: center;">
                 <div style="font-size: 48px; margin-bottom: 16px;">❌</div>
-                <p style="color: #666;">Payment failed. Please try again.</p>
+                <p style="color: #666;">Failed to generate payment token. Please try again.</p>
             </div>
         `;
         modalFooter.innerHTML = `

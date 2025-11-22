@@ -73,17 +73,17 @@ class LLMService:
                 "type": "function",
                 "function": {
                     "name": "complete_checkout",
-                    "description": "Complete the checkout process using a payment token. Use this ONLY when the user provides a payment token and checkout ID.",
+                    "description": "Complete the checkout process using a shared payment token (SPT). Use this ONLY when the user provides a shared payment token (starts with 'spt_') and checkout ID. This finalizes the purchase and charges the payment method.",
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "checkout_id": {
                                 "type": "string",
-                                "description": "The ID of the checkout session"
+                                "description": "The ID of the checkout session (e.g., 'checkout_1234567890')"
                             },
                             "payment_token": {
                                 "type": "string",
-                                "description": "The payment token provided by the user/frontend"
+                                "description": "The shared payment token provided by the user (starts with 'spt_')"
                             }
                         },
                         "required": ["checkout_id", "payment_token"]

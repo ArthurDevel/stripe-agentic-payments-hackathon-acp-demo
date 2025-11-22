@@ -250,7 +250,7 @@ class ACPClient:
         
         Args:
             checkout_id: ID of the checkout to complete
-            payment_token: Payment token from payment provider
+            payment_token: Payment token (can be a regular payment method or SPT token)
             payment_provider: Payment provider name (default: stripe)
             billing_address: Optional billing address
             
@@ -260,23 +260,111 @@ class ACPClient:
         Raises:
             ValueError: If total amount cannot be extracted from checkout
         """
+        # Step 1: Build payment data structure
+        payment_data: Dict[str, Any] = {
+            'provider': payment_provider
+        }
+        
+        # Step 2: Check if this is already a shared payment token (SPT)
+        if payment_token.startswith('spt_'):
+            # Already an SPT token, use it directly
+            print(f"✅ Using existing shared payment token: {payment_token}")
+            payment_data['token'] = payment_token
+        else:
+            # Regular payment method, need to exchange for SPT
+            print(f"🔄 Exchanging payment method for SPT token...")
+            
+            # Get checkout details to extract total amount
+            checkout_response = self.get_checkout(checkout_id)
+            total_amount = _extract_total_amount_from_checkout(checkout_response)
+            
+            # Exchange payment token for SPT token
+            tomorrow = datetime.now() + timedelta(days=1)
+            expires_at_timestamp = int(tomorrow.timestamp()) 
+            
+            # ============================================================
+            # DEMO MODE: Mock Stripe SPT Server (for European demo)
+            # ============================================================
+            mock_spt_url = os.getenv('MOCK_STRIPE_SPT_URL', 'http://localhost:8001')
+            print(f"🎭 DEMO MODE: Using mock Stripe SPT server: {mock_spt_url}/v1/shared_payment/issued_tokens")
+            
+            get_pst_token_response = requests.post(
+                url=f"{mock_spt_url}/v1/shared_payment/issued_tokens", 
+                data={
+                    "payment_method": payment_token,
+                    "usage_limits[currency]": "usd",
+                    "usage_limits[max_amount]": total_amount,
+                    "usage_limits[expires_at]": expires_at_timestamp,
+                    "seller_details[network_id]": "internal",
+                    "seller_details[external_id]": "stripe_test_merchant",
+                }
+            )
+            
+            # # ============================================================
+            # # PRODUCTION MODE: Real Stripe API (commented out)
+            # # ============================================================
+            # # Uncomment below and comment out DEMO MODE block above for production
+            # #
+            # # stripe_api_url = "https://api.stripe.com/v1/shared_payment/issued_tokens"
+            # # print(f"💳 PRODUCTION MODE: Using real Stripe API: {stripe_api_url}")
+            # # 
+            # # get_pst_token_response = requests.post(
+            # #     url=stripe_api_url, 
+            # #     data={
+            # #         "payment_method": payment_token,
+            # #         "usage_limits[currency]": "usd",
+            # #         "usage_limits[max_amount]": total_amount,
+            # #         "usage_limits[expires_at]": expires_at_timestamp,
+            # #         "seller_details[network_id]": "internal",
+            # #         "seller_details[external_id]": "stripe_test_merchant",
+            # #     },
+            # #     auth=(os.getenv("FACILITATOR_API_KEY"), "")
+            # # )
+            
+            spt_response_data = get_pst_token_response.json()
+            print(f"🔍 SPT Response (complete_checkout): {spt_response_data}")
+            spt_token_id = spt_response_data['id']
+            print(f"🎫 Extracted SPT Token ID (complete_checkout): {spt_token_id}")
+            payment_data['token'] = spt_token_id
+        
+        # Step 3: Build request data
+        data: Dict[str, Any] = {'payment_data': payment_data}
+        
+        if billing_address:
+            data['billing_address'] = billing_address
+        
+        # Step 4: Send completion request
+        return self._make_request('POST', f'/checkout_sessions/{checkout_id}/complete', data)
+    
+    def get_shared_payment_token(
+        self,
+        checkout_id: str,
+        payment_token: str,
+        payment_provider: str = DEFAULT_PAYMENT_PROVIDER
+    ) -> Dict[str, Any]:
+        """
+        Exchange a payment token for a shared payment token (SPT) without completing checkout.
+        
+        Args:
+            checkout_id: ID of the checkout session
+            payment_token: Payment token from payment provider
+            payment_provider: Payment provider name (default: stripe)
+            
+        Returns:
+            Dictionary containing the shared payment token
+            
+        Raises:
+            ValueError: If total amount cannot be extracted from checkout
+        """
         # Step 1: Get checkout details to extract total amount
         checkout_response = self.get_checkout(checkout_id)
         total_amount = _extract_total_amount_from_checkout(checkout_response)
         
-        # Step 2: Build payment data structure
-        payment_data: Dict[str, Any] = {
-            'token': payment_token,
-            'provider': payment_provider
-        }
-        
-        # Step 3: Exchange payment token for SPT token
+        # Step 2: Exchange payment token for SPT token
         tomorrow = datetime.now() + timedelta(days=1)
         expires_at_timestamp = int(tomorrow.timestamp()) 
         
-        # ============================================================
-        # DEMO MODE: Mock Stripe SPT Server (for European demo)
-        # ============================================================
+        # Using mock Stripe SPT server
         mock_spt_url = os.getenv('MOCK_STRIPE_SPT_URL', 'http://localhost:8001')
         print(f"🎭 DEMO MODE: Using mock Stripe SPT server: {mock_spt_url}/v1/shared_payment/issued_tokens")
         
@@ -292,40 +380,18 @@ class ACPClient:
             }
         )
         
-        # # ============================================================
-        # # PRODUCTION MODE: Real Stripe API (commented out)
-        # # ============================================================
-        # # Uncomment below and comment out DEMO MODE block above for production
-        # #
-        # # stripe_api_url = "https://api.stripe.com/v1/shared_payment/issued_tokens"
-        # # print(f"💳 PRODUCTION MODE: Using real Stripe API: {stripe_api_url}")
-        # # 
-        # # get_pst_token_response = requests.post(
-        # #     url=stripe_api_url, 
-        # #     data={
-        # #         "payment_method": payment_token,
-        # #         "usage_limits[currency]": "usd",
-        # #         "usage_limits[max_amount]": total_amount,
-        # #         "usage_limits[expires_at]": expires_at_timestamp,
-        # #         "seller_details[network_id]": "internal",
-        # #         "seller_details[external_id]": "stripe_test_merchant",
-        # #     },
-        # #     auth=(os.getenv("FACILITATOR_API_KEY"), "")
-        # # )
+        spt_response_data = get_pst_token_response.json()
+        print(f"🔍 SPT Response: {spt_response_data}")
+        spt_token_id = spt_response_data['id']
+        print(f"🎫 Extracted SPT Token ID: {spt_token_id}")
         
-        print(get_pst_token_response.json())
-        spt_token_id = get_pst_token_response.json()['id']
-        
-        payment_data['token'] = spt_token_id
-        
-        # Step 4: Build request data
-        data: Dict[str, Any] = {'payment_data': payment_data}
-        
-        if billing_address:
-            data['billing_address'] = billing_address
-        
-        # Step 5: Send completion request
-        return self._make_request('POST', f'/checkout_sessions/{checkout_id}/complete', data)
+        return {
+            'shared_payment_token': spt_token_id,
+            'checkout_id': checkout_id,
+            'total_amount': total_amount,
+            'currency': 'usd',
+            'expires_at': expires_at_timestamp
+        }
     
     def cancel_checkout(self, checkout_id: str) -> Dict[str, Any]:
         """
