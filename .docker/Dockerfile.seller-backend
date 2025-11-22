@@ -17,6 +17,7 @@ COPY seller_backend/tsconfig.json .
 COPY seller_backend/server.ts .
 COPY seller_backend/datastructures.ts .
 COPY seller_backend/openapi.agentic_checkout.yaml .
+COPY seller_backend/openapi.products.yaml .
 COPY seller_backend/types ./types
 
 # Build TypeScript
@@ -39,6 +40,7 @@ RUN npm ci --only=production && npm cache clean --force
 # Copy built files and required assets from builder
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/openapi.agentic_checkout.yaml ./
+COPY --from=builder /app/openapi.products.yaml ./
 
 # Expose port (default 3000, configurable via PORT env var)
 EXPOSE ${PORT}
