@@ -1,0 +1,63 @@
+openapi: 3.1.0
+info:
+  title: Products API (Internal)
+  version: "1.0.0"
+  description: Internal endpoint for product catalog (not part of ACP spec)
+
+paths:
+  /products:
+    get:
+      summary: List products
+      operationId: listProducts
+      description: Returns the available product catalog (internal endpoint, not part of ACP spec)
+      tags:
+        - Products
+      responses:
+        "200":
+          description: Product catalog
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  products:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Product"
+                required: [products]
+        "5XX":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  type:
+                    type: string
+                  code:
+                    type: string
+                  message:
+                    type: string
+
+components:
+  schemas:
+    Product:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        price:
+          type: integer
+          description: Price per unit in cents
+        description:
+          type: string
+        stock:
+          type: integer
+        image:
+          type: string
+          format: uri
+      required: [id, name, price, description, stock, image]
+

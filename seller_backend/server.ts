@@ -131,11 +131,33 @@ const apiSpecPath = __dirname.includes('/dist')
   ? path.join(__dirname, '..', 'openapi.agentic_checkout.yaml')
   : path.join(__dirname, 'openapi.agentic_checkout.yaml');
 
-// Load OpenAPI spec for Swagger UI
-const openApiSpec = YAML.load(apiSpecPath);
+const productsSpecPath = __dirname.includes('/dist')
+  ? path.join(__dirname, '..', 'openapi.products.yaml')
+  : path.join(__dirname, 'openapi.products.yaml');
+
+// Load OpenAPI specs for Swagger UI
+const mainSpec = YAML.load(apiSpecPath);
+const productsSpec = YAML.load(productsSpecPath);
+
+// Merge specs: combine paths and components
+const mergedSpec = {
+  ...mainSpec,
+  paths: {
+    ...mainSpec.paths,
+    ...productsSpec.paths,
+  },
+  components: {
+    ...(mainSpec.components || {}),
+    ...(productsSpec.components || {}),
+    schemas: {
+      ...(mainSpec.components?.schemas || {}),
+      ...(productsSpec.components?.schemas || {}),
+    },
+  },
+};
 
 // Swagger UI setup
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(openApiSpec, {
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(mergedSpec, {
   customCss: '.swagger-ui .topbar { display: none }',
   customSiteTitle: 'ACP Seller Backend API Documentation'
 }));
